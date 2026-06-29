@@ -21,7 +21,7 @@ from pathlib import Path
 from urllib.request import Request, urlopen
 
 
-DEFAULT_TOKEN_FILE = Path.home() / "Library" / "PPM" / "PAT" / "Tokens_29_06_2026_14_42_39.pat"
+DEFAULT_TOKEN_FILE = Path("/Users/mitsuyoshitsuha/claudetest/git.rtf")
 DEFAULT_OWNER = "tsuhasqni-pixel"
 DEFAULT_REPO = "internal-accounting"
 DEFAULT_VISIBILITY = "public"
@@ -105,7 +105,9 @@ def run(cmd: list[str], cwd: Path, env: dict | None = None) -> None:
 
 def git_push(repo_dir: Path, owner: str, repo: str, token: str) -> None:
     env = os.environ.copy()
-    remote_url = f"https://github.com/{owner}/{repo}.git"
+    clean_url = f"https://github.com/{owner}/{repo}.git"
+    auth_url = f"https://x-access-token:{token}@github.com/{owner}/{repo}.git"
+
     if not (repo_dir / ".git").exists():
         run(["git", "init", "-b", "main"], repo_dir)
     existing_remote = subprocess.run(
@@ -113,23 +115,27 @@ def git_push(repo_dir: Path, owner: str, repo: str, token: str) -> None:
         cwd=str(repo_dir), capture_output=True, text=True,
     ).stdout.strip()
     if not existing_remote:
-        run(["git", "remote", "add", "origin", remote_url], repo_dir)
-    elif existing_remote != remote_url:
-        run(["git", "remote", "set-url", "origin", remote_url], repo_dir)
+        run(["git", "remote", "add", "origin", clean_url], repo_dir)
+    elif existing_remote != clean_url:
+        run(["git", "remote", "set-url", "origin", clean_url], repo_dir)
 
     run(["git", "add", "-A"], repo_dir)
     status = subprocess.run(
         ["git", "status", "--porcelain"],
         cwd=str(repo_dir), capture_output=True, text=True,
     ).stdout.strip()
-    if status or subprocess.run(
+    has_commits = subprocess.run(
         ["git", "rev-parse", "HEAD"], cwd=str(repo_dir),
         capture_output=True, text=True,
-    ).returncode != 0:
-        run(["git", "commit", "-m", "Initial commit: internal management accounting tool"], repo_dir)
+    ).returncode == 0
+    if status or not has_commits:
+        run(["git", "commit", "-m", "Update from internal-accounting"], repo_dir)
 
-    auth_header = f"http.extraHeader=Authorization: Bearer {token}"
-    run(["git", "-c", auth_header, "push", "-u", "origin", "main"], repo_dir, env=env)
+    try:
+        run(["git", "remote", "set-url", "origin", auth_url], repo_dir)
+        run(["git", "push", "-u", "origin", "main"], repo_dir, env=env)
+    finally:
+        run(["git", "remote", "set-url", "origin", clean_url], repo_dir)
 
 
 def main() -> None:
