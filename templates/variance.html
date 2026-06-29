@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}差異分析 — {{ product.name }} {{ view.period }}{% endblock %}
+{% block content %}
+<h1>差異分析：{{ product.name }} <small class="muted">({{ view.period }})</small></h1>
+
+<section class="card">
+  <ul class="kv">
+    <li><span>原価モード</span><b>{{ "詳細" if view.mode == "detailed" else "簡易" }}</b></li>
+    <li><span>実生産量</span><b>{{ actual.actual_output }} {{ product.unit }}</b></li>
+    <li><span>実際総原価</span><b>{{ view.total_actual }}</b></li>
+    <li><span>標準（または予算）</span><b>{{ view.total_standard }}</b></li>
+    <li><span>総差異</span><b><span class="badge sign-{{ view.total_variance_sign }}">{{ view.total_variance_label }}</span> {{ view.total_variance }}</b></li>
+  </ul>
+</section>
+
+<section class="card">
+  <h2>差異明細</h2>
+  <table class="grid">
+    <thead><tr><th>差異</th><th>計算式</th><th>金額</th><th>判定</th></tr></thead>
+    <tbody>
+      {% for row in view.rows %}
+      <tr>
+        <td>{{ row.name }}</td>
+        <td class="muted small">{{ row.detail }}</td>
+        <td class="right">{{ row.formatted }}</td>
+        <td><span class="badge sign-{{ row.sign }}">{{ row.label }}</span></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+
+<section class="card">
+  <h2>差異ウォーターフォール</h2>
+  <canvas id="varChart" height="120"></canvas>
+  <script>
+    window.__variance = {{ view.rows|tojson }};
+  </script>
+</section>
+
+<p>
+  <a class="btn ghost" href="{{ url_for('actuals_edit', product_id=product.id, period=actual.period) }}">実績を編集</a>
+  <a class="btn ghost" href="{{ url_for('actuals_list') }}">実績一覧へ戻る</a>
+</p>
+{% endblock %}

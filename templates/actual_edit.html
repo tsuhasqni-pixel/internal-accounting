@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+{% block title %}実績入力{% endblock %}
+{% block content %}
+<h1>実績入力</h1>
+
+<form method="get" action="{{ url_for('actuals_edit') }}" class="form">
+  <label>対象製品
+    <select name="product_id" onchange="this.form.submit()">
+      {% for p in products %}
+      <option value="{{ p.id }}" {% if p.id == product.id %}selected{% endif %}>{{ p.name }} ({{ "詳細" if p.mode == "detailed" else "簡易" }})</option>
+      {% endfor %}
+    </select>
+  </label>
+</form>
+
+<form method="post" class="form">
+  <input type="hidden" name="product_id" value="{{ product.id }}" />
+
+  <div class="row">
+    <label>期間 (例: 2026-Q1, 2026-04 など)
+      <input name="period" value="{{ actual.period }}" required />
+    </label>
+    <label>実生産量
+      <input name="actual_output" type="number" step="any" value="{{ actual.actual_output }}" />
+    </label>
+  </div>
+
+  {% if product.mode == "detailed" %}
+  <h2>材料実績</h2>
+  <p class="muted">標準原価カードの材料項目に対する実際単価・実際消費量を入力します。</p>
+  <table class="grid" id="matTable">
+    <thead><tr><th>品名</th><th>実際単価</th><th>実際消費量</th><th></th></tr></thead>
+    <tbody>
+      {% for m in product.cost_card.materials %}
+      {% set _matches = actual.materials|selectattr('name','equalto', m.name)|list %}
+      {% set act = _matches[0] if _matches else None %}
+      <tr>
+        <td><input name="mat_name" value="{{ m.name }}" /></td>
+        <td><input name="mat_price" type="number" step="any" value="{{ act.actual_price if act else '' }}" placeholder="標準 {{ m.std_price }}" /></td>
+        <td><input name="mat_qty" type="number" step="any" value="{{ act.actual_qty if act else '' }}" placeholder="標準 {{ m.std_qty }}" /></td>
+        <td><button type="button" class="btn ghost" data-remove-row>×</button></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  <button type="button" class="btn ghost" data-add-row="matTable" data-template="mat">＋ 材料行を追加</button>
+
+  <h2>労務実績</h2>
+  <table class="grid" id="labTable">
+    <thead><tr><th>工程</th><th>実際賃率</th><th>実際時間</th><th></th></tr></thead>
+    <tbody>
+      {% for l in product.cost_card.labors %}
+      {% set _matches = actual.labors|selectattr('process','equalto', l.process)|list %}
+      {% set act = _matches[0] if _matches else None %}
+      <tr>
+        <td><input name="lab_process" value="{{ l.process }}" /></td>
+        <td><input name="lab_rate" type="number" step="any" value="{{ act.actual_rate if act else '' }}" placeholder="標準 {{ l.std_rate }}" /></td>
+        <td><input name="lab_hours" type="number" step="any" value="{{ act.actual_hours if act else '' }}" placeholder="標準 {{ l.std_hours }}" /></td>
+        <td><button type="button" class="btn ghost" data-remove-row>×</button></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  <button type="button" class="btn ghost" data-add-row="labTable" data-template="lab">＋ 労務行を追加</button>
+
+  <h2>製造間接費（OH）実績</h2>
+  <div class="row">
+    <label>実際変動 OH
+      <input name="oh_var" type="number" step="any" value="{{ actual.overhead.actual_variable }}" />
+    </label>
+    <label>実際固定 OH
+      <input name="oh_fixed" type="number" step="any" value="{{ actual.overhead.actual_fixed }}" />
+    </label>
+  </div>
+
+  {% else %}
+  <h2>簡易モード実績</h2>
+  <p class="muted">案件全体の実際総原価を入力します。任意で材料/労務/経費別に分解できます。</p>
+  <div class="row">
+    <label>実際総原価（¥）
+      <input name="simple_total" type="number" step="any" value="{{ actual.simple.total }}" placeholder="予算 {{ product.cost_card.simple_budget.total }}" />
+    </label>
+    <label>実際材料費（¥）
+      <input name="simple_material" type="number" step="any" value="{{ actual.simple.material }}" placeholder="予算 {{ product.cost_card.simple_budget.material }}" />
+    </label>
+    <label>実際労務費（¥）
+      <input name="simple_labor" type="number" step="any" value="{{ actual.simple.labor }}" placeholder="予算 {{ product.cost_card.simple_budget.labor }}" />
+    </label>
+    <label>実際経費（¥）
+      <input name="simple_overhead" type="number" step="any" value="{{ actual.simple.overhead }}" placeholder="予算 {{ product.cost_card.simple_budget.overhead }}" />
+    </label>
+  </div>
+  {% endif %}
+
+  <div class="actions">
+    <button type="submit" class="btn primary">保存して差異分析へ</button>
+    <a class="btn ghost" href="{{ url_for('actuals_list') }}">キャンセル</a>
+  </div>
+</form>
+{% endblock %}

@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+{% block title %}CVP / 損益分岐点{% endblock %}
+{% block content %}
+<h1>CVP / 損益分岐点分析</h1>
+
+<section class="card">
+  <h2>入力</h2>
+  <form method="post" class="form">
+    <div class="row">
+      <label>売上高（¥）
+        <input name="sales" type="number" step="any" value="{{ cvp_input.sales }}" required />
+      </label>
+      <label>変動費（¥）
+        <input name="variable_cost" type="number" step="any" value="{{ cvp_input.variable_cost }}" required />
+      </label>
+      <label>固定費（¥）
+        <input name="fixed_cost" type="number" step="any" value="{{ cvp_input.fixed_cost }}" required />
+      </label>
+    </div>
+
+    <h3>BEP 押し上げシミュレーション</h3>
+    <p class="muted">不利差異を「実質固定費」とみなして BEP がどれだけシフトするかを試算します。対象の製品・期間を選択してください。</p>
+    <div class="row">
+      <label>対象期間（空欄＝各製品の直近期間）
+        <select name="include_period">
+          <option value="">直近の期間</option>
+          {% for p in periods %}
+          <option value="{{ p }}" {% if p == cvp_input.include_variance_period %}selected{% endif %}>{{ p }}</option>
+          {% endfor %}
+        </select>
+      </label>
+    </div>
+    <div class="checkboxes">
+      {% for p in products %}
+      <label class="checkbox">
+        <input type="checkbox" name="include_pid" value="{{ p.id }}"
+          {% if p.id in cvp_input.include_variance_product_ids %}checked{% endif %} />
+        {{ p.name }} <span class="muted small">({{ "詳細" if p.mode == "detailed" else "簡易" }})</span>
+      </label>
+      {% endfor %}
+    </div>
+
+    <div class="actions">
+      <button type="submit" class="btn primary">計算 / 保存</button>
+    </div>
+  </form>
+</section>
+
+<section class="card">
+  <h2>結果</h2>
+  <ul class="kv kv-grid">
+    <li><span>売上高</span><b>{{ result.sales_fmt }}</b></li>
+    <li><span>変動費</span><b>{{ result.variable_cost_fmt }}</b></li>
+    <li><span>固定費</span><b>{{ result.fixed_cost_fmt }}</b></li>
+    <li><span>限界利益</span><b>{{ result.cm_fmt }}</b></li>
+    <li><span>限界利益率</span><b>{{ result.cm_ratio_fmt }}</b></li>
+    <li><span>BEP 売上高</span><b>{{ result.bep_sales_fmt }}</b></li>
+    <li><span>安全余裕額</span><b>{{ result.margin_of_safety_fmt }}</b></li>
+    <li><span>安全余裕率</span><b>{{ result.margin_of_safety_ratio_fmt }}</b></li>
+  </ul>
+
+  <h3>差異込みの BEP 比較</h3>
+  <ul class="kv kv-grid">
+    <li><span>不利差異の合計</span><b>{{ unfav_total }}</b></li>
+    <li><span>調整後固定費</span><b>{{ result.adjusted_fixed_fmt }}</b></li>
+    <li><span>調整後 BEP 売上高</span><b>{{ result.adjusted_bep_sales_fmt }}</b></li>
+    <li><span>BEP シフト幅</span><b>{{ result.bep_shift_fmt }}</b></li>
+    <li><span>調整後 安全余裕額</span><b>{{ result.adjusted_margin_of_safety_fmt }}</b></li>
+  </ul>
+
+  {% if unfav_breakdown %}
+  <h4>差異内訳</h4>
+  <table class="grid">
+    <thead><tr><th>製品</th><th>期間</th><th>不利差異合計</th></tr></thead>
+    <tbody>
+      {% for u in unfav_breakdown %}
+      <tr><td>{{ u.product.name }}</td><td>{{ u.period }}</td><td class="right">{{ u.unfav_total }}</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+</section>
+
+<section class="card">
+  <h2>BEP チャート</h2>
+  <canvas id="cvpChart" height="180"></canvas>
+  <script>
+    window.__cvp = {
+      sales: {{ result.sales|tojson }},
+      variable_cost: {{ result.variable_cost|tojson }},
+      fixed_cost: {{ result.fixed_cost|tojson }},
+      adjusted_fixed: {{ result.adjusted_fixed|tojson }},
+      bep_sales: {{ result.bep_sales|tojson }},
+      adjusted_bep_sales: {{ result.adjusted_bep_sales|tojson }},
+      cm_ratio: {{ result.cm_ratio|tojson }}
+    };
+  </script>
+</section>
+{% endblock %}

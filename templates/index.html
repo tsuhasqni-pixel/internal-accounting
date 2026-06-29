@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% block title %}ダッシュボード — 内部管理会計{% endblock %}
+{% block content %}
+<h1>ダッシュボード</h1>
+
+<section class="card">
+  <h2>製品一覧</h2>
+  {% if products %}
+    <table class="grid">
+      <thead><tr><th>ID</th><th>製品名</th><th>モード</th><th>単位</th><th>標準生産量</th><th>操作</th></tr></thead>
+      <tbody>
+        {% for p in products %}
+        <tr>
+          <td>{{ p.id }}</td>
+          <td>{{ p.name }}</td>
+          <td><span class="badge mode-{{ p.mode }}">{{ "詳細" if p.mode == "detailed" else "簡易" }}</span></td>
+          <td>{{ p.unit }}</td>
+          <td>{{ p.std_output }}</td>
+          <td>
+            <a class="btn ghost" href="{{ url_for('product_edit', pid=p.id) }}">編集</a>
+            <a class="btn ghost" href="{{ url_for('actuals_edit', product_id=p.id) }}">実績入力</a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <p class="muted">まだ製品が登録されていません。<a href="{{ url_for('product_new') }}">最初の製品を作成</a>してください。</p>
+  {% endif %}
+  <p><a class="btn primary" href="{{ url_for('product_new') }}">＋ 新規製品 / 標準原価カード</a></p>
+</section>
+
+<section class="card">
+  <h2>最新差異サマリ</h2>
+  {% if latest_variance %}
+    {% for item in latest_variance %}
+      <h3>{{ item.product.name }} <small class="muted">({{ item.view.period }} · {{ "詳細" if item.view.mode == "detailed" else "簡易" }})</small></h3>
+      <table class="grid">
+        <thead><tr><th>差異名</th><th>金額</th><th>判定</th></tr></thead>
+        <tbody>
+          {% for row in item.view.rows %}
+          <tr>
+            <td>{{ row.name }}</td>
+            <td class="right">{{ row.formatted }}</td>
+            <td><span class="badge sign-{{ row.sign }}">{{ row.label }}</span></td>
+          </tr>
+          {% endfor %}
+          <tr class="total">
+            <td>総差異</td>
+            <td class="right">{{ item.view.total_variance }}</td>
+            <td><span class="badge sign-{{ item.view.total_variance_sign }}">{{ item.view.total_variance_label }}</span></td>
+          </tr>
+        </tbody>
+      </table>
+    {% endfor %}
+  {% else %}
+    <p class="muted">実績がまだありません。</p>
+  {% endif %}
+</section>
+
+<section class="card">
+  <h2>CVP サマリ</h2>
+  {% if cvp_view %}
+    <ul class="kv">
+      <li><span>売上高</span><b>{{ cvp_view.sales_fmt }}</b></li>
+      <li><span>限界利益率</span><b>{{ cvp_view.cm_ratio_fmt }}</b></li>
+      <li><span>BEP 売上高</span><b>{{ cvp_view.bep_sales_fmt }}</b></li>
+      <li><span>差異込み BEP</span><b>{{ cvp_view.adjusted_bep_sales_fmt }}</b></li>
+      <li><span>BEP シフト</span><b>{{ cvp_view.bep_shift_fmt }}</b></li>
+    </ul>
+    <a class="btn ghost" href="{{ url_for('cvp_view') }}">詳細を見る</a>
+  {% else %}
+    <p class="muted">CVP 入力がまだありません。<a href="{{ url_for('cvp_view') }}">入力する</a></p>
+  {% endif %}
+</section>
+{% endblock %}

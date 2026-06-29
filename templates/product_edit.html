@@ -1,0 +1,114 @@
+{% extends "base.html" %}
+{% block title %}{{ "新規製品" if new else "製品編集" }}{% endblock %}
+{% block content %}
+<h1>{{ "新規製品" if new else "製品編集：" + product.name }}</h1>
+
+<form method="post" class="form">
+  <div class="row">
+    <label>ID
+      <input name="id" value="{{ product.id }}" {% if not new %}readonly{% endif %} placeholder="自動採番OK" />
+    </label>
+    <label>製品名
+      <input name="name" value="{{ product.name }}" required />
+    </label>
+    <label>単位
+      <input name="unit" value="{{ product.unit }}" />
+    </label>
+    <label>標準生産量（このカード1セットで作れる数）
+      <input name="std_output" type="number" step="any" value="{{ product.std_output }}" />
+    </label>
+  </div>
+
+  <div class="row">
+    <label>原価モード
+      <select name="mode" id="modeSelect">
+        <option value="detailed" {% if product.mode == "detailed" %}selected{% endif %}>詳細（標準原価カード）</option>
+        <option value="simple" {% if product.mode == "simple" %}selected{% endif %}>簡易（予算差異のみ）</option>
+      </select>
+    </label>
+  </div>
+
+  <section data-mode="detailed">
+    <h2>材料標準</h2>
+    <table class="grid" id="matTable">
+      <thead><tr><th>品名</th><th>標準単価</th><th>標準数量</th><th></th></tr></thead>
+      <tbody>
+        {% for m in product.cost_card.materials %}
+        <tr>
+          <td><input name="mat_name" value="{{ m.name }}" /></td>
+          <td><input name="mat_price" type="number" step="any" value="{{ m.std_price }}" /></td>
+          <td><input name="mat_qty" type="number" step="any" value="{{ m.std_qty }}" /></td>
+          <td><button type="button" class="btn ghost" data-remove-row>×</button></td>
+        </tr>
+        {% endfor %}
+        <tr>
+          <td><input name="mat_name" placeholder="例: 鋼材A" /></td>
+          <td><input name="mat_price" type="number" step="any" /></td>
+          <td><input name="mat_qty" type="number" step="any" /></td>
+          <td><button type="button" class="btn ghost" data-remove-row>×</button></td>
+        </tr>
+      </tbody>
+    </table>
+    <button type="button" class="btn ghost" data-add-row="matTable" data-template="mat">＋ 材料追加</button>
+
+    <h2>労務標準</h2>
+    <table class="grid" id="labTable">
+      <thead><tr><th>工程</th><th>標準賃率</th><th>標準時間</th><th></th></tr></thead>
+      <tbody>
+        {% for l in product.cost_card.labors %}
+        <tr>
+          <td><input name="lab_process" value="{{ l.process }}" /></td>
+          <td><input name="lab_rate" type="number" step="any" value="{{ l.std_rate }}" /></td>
+          <td><input name="lab_hours" type="number" step="any" value="{{ l.std_hours }}" /></td>
+          <td><button type="button" class="btn ghost" data-remove-row>×</button></td>
+        </tr>
+        {% endfor %}
+        <tr>
+          <td><input name="lab_process" placeholder="例: 機械加工" /></td>
+          <td><input name="lab_rate" type="number" step="any" /></td>
+          <td><input name="lab_hours" type="number" step="any" /></td>
+          <td><button type="button" class="btn ghost" data-remove-row>×</button></td>
+        </tr>
+      </tbody>
+    </table>
+    <button type="button" class="btn ghost" data-add-row="labTable" data-template="lab">＋ 労務追加</button>
+
+    <h2>製造間接費（OH）</h2>
+    <div class="row">
+      <label>変動費率（¥/時間）
+        <input name="oh_var_rate" type="number" step="any" value="{{ product.cost_card.overhead.var_rate }}" />
+      </label>
+      <label>固定予算（¥）
+        <input name="oh_fixed_budget" type="number" step="any" value="{{ product.cost_card.overhead.fixed_budget }}" />
+      </label>
+      <label>基準操業度（時間）
+        <input name="oh_normal_hours" type="number" step="any" value="{{ product.cost_card.overhead.normal_hours }}" />
+      </label>
+    </div>
+  </section>
+
+  <section data-mode="simple" hidden>
+    <h2>簡易予算（BOMが無い案件用）</h2>
+    <p class="muted">建築・受注案件などBOM展開ができないとき。総予算のみ、または材料/労務/経費別に予算を入力できます。</p>
+    <div class="row">
+      <label>予算総額（¥）
+        <input name="simple_total" type="number" step="any" value="{{ product.cost_card.simple_budget.total }}" />
+      </label>
+      <label>材料予算（¥）
+        <input name="simple_material" type="number" step="any" value="{{ product.cost_card.simple_budget.material }}" />
+      </label>
+      <label>労務予算（¥）
+        <input name="simple_labor" type="number" step="any" value="{{ product.cost_card.simple_budget.labor }}" />
+      </label>
+      <label>経費予算（¥）
+        <input name="simple_overhead" type="number" step="any" value="{{ product.cost_card.simple_budget.overhead }}" />
+      </label>
+    </div>
+  </section>
+
+  <div class="actions">
+    <button type="submit" class="btn primary">保存</button>
+    <a class="btn ghost" href="{{ url_for('product_list') }}">キャンセル</a>
+  </div>
+</form>
+{% endblock %}

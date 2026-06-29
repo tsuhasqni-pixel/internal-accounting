@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <title>{% block title %}内部管理会計{% endblock %}</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+</head>
+<body>
+  <nav class="topnav">
+    <div class="brand">内部管理会計</div>
+    <a href="{{ url_for('index') }}">ダッシュボード</a>
+    <a href="{{ url_for('product_list') }}">製品 / 標準原価カード</a>
+    <a href="{{ url_for('actuals_list') }}">実績入力</a>
+    <a href="{{ url_for('cvp_view') }}">CVP / 損益分岐点</a>
+  </nav>
+  <main class="container">
+    {% block content %}{% endblock %}
+  </main>
+  <footer>
+    <small>標準原価・差異分析・CVP — 自家製管理会計ツール</small>
+  </footer>
+  <script src="{{ url_for('static', filename='app.js') }}"></script>
+</body>
+</html>

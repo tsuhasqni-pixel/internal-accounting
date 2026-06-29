@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block title %}製品 / 標準原価カード{% endblock %}
+{% block content %}
+<h1>製品 / 標準原価カード</h1>
+<p><a class="btn primary" href="{{ url_for('product_new') }}">＋ 新規製品</a></p>
+
+{% if products %}
+<table class="grid">
+  <thead>
+    <tr>
+      <th>ID</th><th>製品名</th><th>モード</th><th>単位</th><th>標準生産量</th><th>材料明細</th><th>労務明細</th><th>操作</th>
+    </tr>
+  </thead>
+  <tbody>
+  {% for p in products %}
+    <tr>
+      <td>{{ p.id }}</td>
+      <td>{{ p.name }}</td>
+      <td><span class="badge mode-{{ p.mode }}">{{ "詳細" if p.mode == "detailed" else "簡易" }}</span></td>
+      <td>{{ p.unit }}</td>
+      <td>{{ p.std_output }}</td>
+      <td>{{ p.cost_card.materials|length }}</td>
+      <td>{{ p.cost_card.labors|length }}</td>
+      <td>
+        <a class="btn ghost" href="{{ url_for('product_edit', pid=p.id) }}">編集</a>
+        <form method="post" action="{{ url_for('product_delete', pid=p.id) }}" style="display:inline" onsubmit="return confirm('削除します。よろしいですか?');">
+          <button type="submit" class="btn danger">削除</button>
+        </form>
+      </td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p class="muted">まだ登録されていません。</p>
+{% endif %}
+{% endblock %}

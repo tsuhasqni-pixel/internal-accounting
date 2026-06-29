@@ -1,0 +1,185 @@
+:root {
+  --fg: #1f2933;
+  --muted: #6b7280;
+  --bg: #f7f8fa;
+  --card: #ffffff;
+  --border: #e4e7eb;
+  --primary: #2563eb;
+  --primary-fg: #fff;
+  --danger: #dc2626;
+  --unfav: #b91c1c;
+  --fav: #047857;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: -apple-system, "Hiragino Kaku Gothic ProN", "Yu Gothic", Meiryo, sans-serif;
+  background: var(--bg);
+  color: var(--fg);
+  line-height: 1.6;
+}
+
+.topnav {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.75rem 1.5rem;
+  background: #fff;
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+.topnav .brand {
+  font-weight: 700;
+  margin-right: 1rem;
+}
+.topnav a {
+  color: var(--fg);
+  text-decoration: none;
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+}
+.topnav a:hover { background: var(--bg); }
+
+.container {
+  max-width: 1100px;
+  margin: 1.5rem auto;
+  padding: 0 1.5rem;
+}
+
+h1 { margin-top: 0; }
+h2 { margin-top: 1.5rem; }
+
+.card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 1.25rem 1.5rem;
+  margin-bottom: 1.25rem;
+}
+
+.muted { color: var(--muted); }
+.small { font-size: 0.875rem; }
+
+table.grid {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0.5rem 0;
+}
+table.grid th,
+table.grid td {
+  border-bottom: 1px solid var(--border);
+  padding: 0.5rem 0.75rem;
+  vertical-align: middle;
+  text-align: left;
+}
+table.grid th {
+  background: #f9fafb;
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+table.grid td.right { text-align: right; font-variant-numeric: tabular-nums; }
+table.grid tr.total td { font-weight: 700; background: #fafafa; }
+
+.btn {
+  display: inline-block;
+  padding: 0.4rem 0.9rem;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  background: #fff;
+  color: var(--fg);
+  cursor: pointer;
+  text-decoration: none;
+  font-size: 0.9rem;
+}
+.btn:hover { background: var(--bg); }
+.btn.primary { background: var(--primary); color: var(--primary-fg); border-color: var(--primary); }
+.btn.primary:hover { background: #1d4ed8; }
+.btn.danger { background: #fff; color: var(--danger); border-color: var(--danger); }
+.btn.danger:hover { background: #fee2e2; }
+.btn.ghost { background: #fff; }
+
+.badge {
+  display: inline-block;
+  padding: 0.1rem 0.5rem;
+  border-radius: 12px;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+.badge.sign-unfav { background: #fee2e2; color: var(--unfav); }
+.badge.sign-fav { background: #d1fae5; color: var(--fav); }
+.badge.sign-zero { background: #f3f4f6; color: var(--muted); }
+.badge.mode-detailed { background: #dbeafe; color: #1e40af; }
+.badge.mode-simple { background: #fef3c7; color: #92400e; }
+
+.form .row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 1rem;
+  margin: 0.5rem 0 1rem;
+}
+.form label {
+  display: flex;
+  flex-direction: column;
+  font-size: 0.9rem;
+  color: var(--muted);
+  gap: 0.25rem;
+}
+.form input,
+.form select {
+  font-size: 1rem;
+  padding: 0.45rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: #fff;
+  color: var(--fg);
+}
+.form input:focus,
+.form select:focus { outline: 2px solid var(--primary); outline-offset: 0; }
+.form .actions { margin-top: 1.25rem; }
+
+.checkboxes {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 0.5rem;
+  margin: 0.5rem 0 1rem;
+}
+.checkbox {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.4rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: #fff;
+}
+
+ul.kv {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+ul.kv li {
+  display: flex;
+  justify-content: space-between;
+  padding: 0.4rem 0;
+  border-bottom: 1px dashed var(--border);
+}
+ul.kv li:last-child { border-bottom: 0; }
+ul.kv span { color: var(--muted); }
+ul.kv b { font-variant-numeric: tabular-nums; }
+
+ul.kv.kv-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 0 1.25rem;
+}
+
+footer {
+  text-align: center;
+  color: var(--muted);
+  padding: 2rem 1rem;
+}

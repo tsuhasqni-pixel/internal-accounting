@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}実績入力{% endblock %}
+{% block content %}
+<h1>実績入力</h1>
+<p><a class="btn primary" href="{{ url_for('actuals_edit') }}">＋ 新規実績</a></p>
+
+{% if actuals %}
+<table class="grid">
+  <thead><tr><th>製品</th><th>期間</th><th>実生産量</th><th>操作</th></tr></thead>
+  <tbody>
+  {% for a in actuals %}
+    {% set prod = products|selectattr('id','equalto', a.product_id)|first %}
+    <tr>
+      <td>{{ prod.name if prod else a.product_id }}</td>
+      <td>{{ a.period }}</td>
+      <td>{{ a.actual_output }}</td>
+      <td>
+        <a class="btn ghost" href="{{ url_for('variance_view', product_id=a.product_id, period=a.period) }}">差異分析</a>
+        <a class="btn ghost" href="{{ url_for('actuals_edit', product_id=a.product_id, period=a.period) }}">編集</a>
+        <form method="post" action="{{ url_for('actuals_delete') }}" style="display:inline" onsubmit="return confirm('削除します。よろしいですか?');">
+          <input type="hidden" name="product_id" value="{{ a.product_id }}" />
+          <input type="hidden" name="period" value="{{ a.period }}" />
+          <button type="submit" class="btn danger">削除</button>
+        </form>
+      </td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p class="muted">まだ実績が登録されていません。</p>
+{% endif %}
+{% endblock %}
