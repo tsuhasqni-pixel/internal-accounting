@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>内部管理会計（ブラウザ版）</title>
+  <link rel="stylesheet" href="style.css" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+</head>
+<body>
+  <nav class="topnav">
+    <div class="brand">内部管理会計（静的版）</div>
+    <a href="#dashboard" data-tab="dashboard">ダッシュボード</a>
+    <a href="#products" data-tab="products">製品 / 標準原価カード</a>
+    <a href="#actuals" data-tab="actuals">実績入力</a>
+    <a href="#cvp" data-tab="cvp">CVP / 損益分岐点</a>
+    <span class="spacer"></span>
+    <button id="btnExport" class="btn ghost" type="button">JSONエクスポート</button>
+    <label class="btn ghost" for="fileImport">JSONインポート<input id="fileImport" type="file" accept="application/json" hidden /></label>
+    <button id="btnReset" class="btn danger" type="button">全削除</button>
+  </nav>
+
+  <main class="container">
+    <section id="tab-dashboard" class="tab">
+      <h1>ダッシュボード</h1>
+      <section class="card">
+        <h2>製品一覧</h2>
+        <div id="dashProducts"></div>
+        <p><button class="btn primary" data-go="products" type="button">＋ 製品 / 標準原価カードを編集</button></p>
+      </section>
+      <section class="card">
+        <h2>最新差異サマリ</h2>
+        <div id="dashVariance"></div>
+      </section>
+      <section class="card">
+        <h2>CVP サマリ</h2>
+        <div id="dashCvp"></div>
+      </section>
+    </section>
+
+    <section id="tab-products" class="tab" hidden>
+      <h1>製品 / 標準原価カード</h1>
+      <section class="card">
+        <h2 id="productEditTitle">新規製品</h2>
+        <form id="productForm" class="form">
+          <input type="hidden" name="id" />
+          <div class="row">
+            <label>製品名<input name="name" required /></label>
+            <label>単位<input name="unit" value="個" /></label>
+            <label>標準生産量<input name="std_output" type="number" step="any" value="1" /></label>
+            <label>原価モード
+              <select name="mode" id="modeSelect">
+                <option value="detailed">詳細（標準原価カード）</option>
+                <option value="simple">簡易（予算差異のみ）</option>
+              </select>
+            </label>
+          </div>
+
+          <section data-mode="detailed">
+            <h3>材料標準</h3>
+            <table class="grid" id="matTable">
+              <thead><tr><th>品名</th><th>標準単価</th><th>標準数量</th><th></th></tr></thead>
+              <tbody></tbody>
+            </table>
+            <button type="button" class="btn ghost" data-add-row="matTable" data-tpl="mat">＋ 材料追加</button>
+
+            <h3>労務標準</h3>
+            <table class="grid" id="labTable">
+              <thead><tr><th>工程</th><th>標準賃率</th><th>標準時間</th><th></th></tr></thead>
+              <tbody></tbody>
+            </table>
+            <button type="button" class="btn ghost" data-add-row="labTable" data-tpl="lab">＋ 労務追加</button>
+
+            <h3>製造間接費（OH）</h3>
+            <div class="row">
+              <label>変動費率（¥/時間）<input name="oh_var_rate" type="number" step="any" /></label>
+              <label>固定予算（¥）<input name="oh_fixed_budget" type="number" step="any" /></label>
+              <label>基準操業度（時間）<input name="oh_normal_hours" type="number" step="any" /></label>
+            </div>
+          </section>
+
+          <section data-mode="simple" hidden>
+            <h3>簡易予算（BOMが無い案件用）</h3>
+            <div class="row">
+              <label>予算総額（¥）<input name="simple_total" type="number" step="any" /></label>
+              <label>材料予算（¥）<input name="simple_material" type="number" step="any" /></label>
+              <label>労務予算（¥）<input name="simple_labor" type="number" step="any" /></label>
+              <label>経費予算（¥）<input name="simple_overhead" type="number" step="any" /></label>
+            </div>
+          </section>
+
+          <div class="actions">
+            <button type="submit" class="btn primary">保存</button>
+            <button type="reset" class="btn ghost" id="productReset">入力リセット</button>
+          </div>
+        </form>
+      </section>
+
+      <section class="card">
+        <h2>登録済み製品</h2>
+        <div id="productList"></div>
+      </section>
+    </section>
+
+    <section id="tab-actuals" class="tab" hidden>
+      <h1>実績入力</h1>
+      <section class="card">
+        <h2>実績フォーム</h2>
+        <form id="actualForm" class="form">
+          <div class="row">
+            <label>対象製品
+              <select name="product_id" id="actualProductSelect"></select>
+            </label>
+            <label>期間（例: 2026-Q1）<input name="period" required value="2026-Q1" /></label>
+            <label>実生産量<input name="actual_output" type="number" step="any" value="1" /></label>
+          </div>
+          <div id="actualDetailedSection">
+            <h3>材料実績</h3>
+            <table class="grid" id="actMatTable">
+              <thead><tr><th>品名</th><th>実際単価</th><th>実際数量</th><th></th></tr></thead>
+              <tbody></tbody>
+            </table>
+            <button type="button" class="btn ghost" data-add-row="actMatTable" data-tpl="mat">＋ 材料行</button>
+
+            <h3>労務実績</h3>
+            <table class="grid" id="actLabTable">
+              <thead><tr><th>工程</th><th>実際賃率</th><th>実際時間</th><th></th></tr></thead>
+              <tbody></tbody>
+            </table>
+            <button type="button" class="btn ghost" data-add-row="actLabTable" data-tpl="lab">＋ 労務行</button>
+
+            <h3>製造間接費（OH）実績</h3>
+            <div class="row">
+              <label>実際変動 OH<input name="oh_var" type="number" step="any" /></label>
+              <label>実際固定 OH<input name="oh_fixed" type="number" step="any" /></label>
+            </div>
+          </div>
+          <div id="actualSimpleSection" hidden>
+            <h3>簡易モード実績</h3>
+            <div class="row">
+              <label>実際総原価（¥）<input name="simple_total" type="number" step="any" /></label>
+              <label>実際材料費（¥）<input name="simple_material" type="number" step="any" /></label>
+              <label>実際労務費（¥）<input name="simple_labor" type="number" step="any" /></label>
+              <label>実際経費（¥）<input name="simple_overhead" type="number" step="any" /></label>
+            </div>
+          </div>
+          <div class="actions">
+            <button type="submit" class="btn primary">保存して差異分析</button>
+          </div>
+        </form>
+      </section>
+
+      <section class="card">
+        <h2>登録済み実績</h2>
+        <div id="actualList"></div>
+      </section>
+
+      <section class="card" id="varianceCard" hidden>
+        <h2>差異分析</h2>
+        <div id="varianceContent"></div>
+        <canvas id="varChart" height="120"></canvas>
+      </section>
+    </section>
+
+    <section id="tab-cvp" class="tab" hidden>
+      <h1>CVP / 損益分岐点分析</h1>
+      <section class="card">
+        <h2>入力</h2>
+        <form id="cvpForm" class="form">
+          <div class="row">
+            <label>売上高（¥）<input name="sales" type="number" step="any" required /></label>
+            <label>変動費（¥）<input name="variable_cost" type="number" step="any" required /></label>
+            <label>固定費（¥）<input name="fixed_cost" type="number" step="any" required /></label>
+          </div>
+          <h3>BEP 押し上げシミュレーション</h3>
+          <p class="muted">不利差異を「実質固定費」とみなして BEP がどれだけシフトするかを試算します。対象製品をチェック。</p>
+          <label>対象期間（空欄＝各製品の直近期間）
+            <select name="include_period" id="cvpPeriodSelect">
+              <option value="">直近の期間</option>
+            </select>
+          </label>
+          <div class="checkboxes" id="cvpProductCheckboxes"></div>
+          <div class="actions">
+            <button type="submit" class="btn primary">計算 / 保存</button>
+          </div>
+        </form>
+      </section>
+      <section class="card">
+        <h2>結果</h2>
+        <div id="cvpResult"></div>
+        <canvas id="cvpChart" height="180"></canvas>
+      </section>
+    </section>
+  </main>
+
+  <footer><small>標準原価・差異分析・CVP — 静的版（GitHub Pages）/ データは localStorage に保存</small></footer>
+  <script src="app.js"></script>
+</body>
+</html>
