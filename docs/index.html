@@ -163,30 +163,38 @@
     </section>
 
     <section id="tab-cvp" class="tab" hidden>
-      <h1>CVP / 損益分岐点分析</h1>
+      <h1>CVP / 損益分岐点・段階別利益</h1>
       <section class="card">
-        <h2>入力</h2>
+        <h2>売上明細</h2>
+        <p class="muted">製品を紐付けると標準原価カードから単位変動費を取り込めます。「標準原価から再取込」を押すと空欄行のみ、「強制再取込」は手入力も上書きします。</p>
         <form id="cvpForm" class="form">
+          <table class="grid" id="cvpLineTable">
+            <thead>
+              <tr><th>名称</th><th>製品（任意）</th><th>販売単価</th><th>数量</th><th>単位変動費</th><th>個別固定費</th><th></th></tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+          <button type="button" class="btn ghost" id="btnAddCvpLine">＋ 行追加</button>
+          <button type="button" class="btn ghost" id="btnPullCostCards">標準原価から再取込（空欄のみ）</button>
+          <button type="button" class="btn ghost" id="btnPullCostCardsForce">強制再取込（上書き）</button>
+
           <div class="row">
-            <label>売上高（¥）<input name="sales" type="number" step="any" required /></label>
-            <label>変動費（¥）<input name="variable_cost" type="number" step="any" required /></label>
-            <label>固定費（¥）<input name="fixed_cost" type="number" step="any" required /></label>
+            <label>共通固定費（¥）<input name="common_fixed" type="number" step="any" /></label>
           </div>
-          <h3>BEP 押し上げシミュレーション</h3>
-          <p class="muted">不利差異を「実質固定費」とみなして BEP がどれだけシフトするかを試算します。対象製品をチェック。</p>
-          <label>対象期間（空欄＝各製品の直近期間）
-            <select name="include_period" id="cvpPeriodSelect">
-              <option value="">直近の期間</option>
-            </select>
-          </label>
-          <div class="checkboxes" id="cvpProductCheckboxes"></div>
+
           <div class="actions">
             <button type="submit" class="btn primary">計算 / 保存</button>
           </div>
         </form>
       </section>
+
       <section class="card">
-        <h2>結果</h2>
+        <h2>製品ライン別</h2>
+        <div id="cvpLinesResult"></div>
+      </section>
+
+      <section class="card">
+        <h2>段階別損益・BEP</h2>
         <div id="cvpResult"></div>
         <canvas id="cvpChart" height="180"></canvas>
       </section>

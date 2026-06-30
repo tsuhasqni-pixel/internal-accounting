@@ -1,97 +1,130 @@
 {% extends "base.html" %}
 {% block title %}CVP / 損益分岐点{% endblock %}
 {% block content %}
-<h1>CVP / 損益分岐点分析</h1>
+<h1>CVP / 損益分岐点・段階別利益</h1>
 
 <section class="card">
-  <h2>入力</h2>
-  <form method="post" class="form">
-    <div class="row">
-      <label>売上高（¥）
-        <input name="sales" type="number" step="any" value="{{ cvp_input.sales }}" required />
-      </label>
-      <label>変動費（¥）
-        <input name="variable_cost" type="number" step="any" value="{{ cvp_input.variable_cost }}" required />
-      </label>
-      <label>固定費（¥）
-        <input name="fixed_cost" type="number" step="any" value="{{ cvp_input.fixed_cost }}" required />
-      </label>
-    </div>
+  <h2>売上明細</h2>
+  <p class="muted">製品を選ぶと「単位変動費の標準値」を取り込めます。空欄のまま「標準原価から再取込」を押せば一括反映、強制再取込なら手入力分も上書きされます。</p>
+  <form method="post" class="form" id="cvpForm">
+    <table class="grid" id="cvpLines">
+      <thead>
+        <tr>
+          <th>名称</th><th>製品（任意）</th><th>販売単価</th><th>数量</th><th>単位変動費</th><th>個別固定費</th><th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for l in scenario.lines %}
+        <tr>
+          <td><input name="line_name" value="{{ l.name }}" placeholder="ライン名" /></td>
+          <td>
+            <select name="line_pid" class="line-pid">
+              <option value="">（製品紐付けなし）</option>
+              {% for p in products %}
+              <option value="{{ p.id }}" data-suggested="{{ suggested_unit_var.get(p.id, 0) }}" {% if p.id == l.product_id %}selected{% endif %}>{{ p.name }}（標準 {{ "%.0f"|format(suggested_unit_var.get(p.id, 0)) }} 円/単位）</option>
+              {% endfor %}
+            </select>
+          </td>
+          <td><input name="line_unit_price" type="number" step="any" value="{{ l.unit_price }}" /></td>
+          <td><input name="line_qty" type="number" step="any" value="{{ l.quantity }}" /></td>
+          <td><input name="line_unit_variable" type="number" step="any" value="{{ l.unit_variable }}" /></td>
+          <td><input name="line_direct_fixed" type="number" step="any" value="{{ l.direct_fixed }}" /></td>
+          <td><button type="button" class="btn ghost" data-remove-row>×</button></td>
+        </tr>
+        {% endfor %}
+        <tr>
+          <td><input name="line_name" placeholder="例: 製品A" /></td>
+          <td>
+            <select name="line_pid" class="line-pid">
+              <option value="">（製品紐付けなし）</option>
+              {% for p in products %}
+              <option value="{{ p.id }}" data-suggested="{{ suggested_unit_var.get(p.id, 0) }}">{{ p.name }}（標準 {{ "%.0f"|format(suggested_unit_var.get(p.id, 0)) }} 円/単位）</option>
+              {% endfor %}
+            </select>
+          </td>
+          <td><input name="line_unit_price" type="number" step="any" /></td>
+          <td><input name="line_qty" type="number" step="any" /></td>
+          <td><input name="line_unit_variable" type="number" step="any" /></td>
+          <td><input name="line_direct_fixed" type="number" step="any" /></td>
+          <td><button type="button" class="btn ghost" data-remove-row>×</button></td>
+        </tr>
+      </tbody>
+    </table>
+    <button type="button" class="btn ghost" data-add-row="cvpLines" data-template="cvpline">＋ 行追加</button>
 
-    <h3>BEP 押し上げシミュレーション</h3>
-    <p class="muted">不利差異を「実質固定費」とみなして BEP がどれだけシフトするかを試算します。対象の製品・期間を選択してください。</p>
     <div class="row">
-      <label>対象期間（空欄＝各製品の直近期間）
-        <select name="include_period">
-          <option value="">直近の期間</option>
-          {% for p in periods %}
-          <option value="{{ p }}" {% if p == cvp_input.include_variance_period %}selected{% endif %}>{{ p }}</option>
-          {% endfor %}
-        </select>
+      <label>共通固定費（¥）
+        <input name="common_fixed" type="number" step="any" value="{{ scenario.common_fixed }}" />
       </label>
-    </div>
-    <div class="checkboxes">
-      {% for p in products %}
-      <label class="checkbox">
-        <input type="checkbox" name="include_pid" value="{{ p.id }}"
-          {% if p.id in cvp_input.include_variance_product_ids %}checked{% endif %} />
-        {{ p.name }} <span class="muted small">({{ "詳細" if p.mode == "detailed" else "簡易" }})</span>
-      </label>
-      {% endfor %}
     </div>
 
     <div class="actions">
       <button type="submit" class="btn primary">計算 / 保存</button>
     </div>
   </form>
+
+  <form method="post" style="margin-top:.5rem">
+    <input type="hidden" name="action" value="pull" />
+    <button type="submit" class="btn ghost">標準原価から再取込（空欄のみ）</button>
+    <button type="submit" class="btn ghost" name="force" value="1" onclick="return confirm('既存の単位変動費を上書きします。よろしいですか?');">強制再取込</button>
+  </form>
 </section>
 
 <section class="card">
-  <h2>結果</h2>
-  <ul class="kv kv-grid">
-    <li><span>売上高</span><b>{{ result.sales_fmt }}</b></li>
-    <li><span>変動費</span><b>{{ result.variable_cost_fmt }}</b></li>
-    <li><span>固定費</span><b>{{ result.fixed_cost_fmt }}</b></li>
-    <li><span>限界利益</span><b>{{ result.cm_fmt }}</b></li>
-    <li><span>限界利益率</span><b>{{ result.cm_ratio_fmt }}</b></li>
-    <li><span>BEP 売上高</span><b>{{ result.bep_sales_fmt }}</b></li>
-    <li><span>安全余裕額</span><b>{{ result.margin_of_safety_fmt }}</b></li>
-    <li><span>安全余裕率</span><b>{{ result.margin_of_safety_ratio_fmt }}</b></li>
-  </ul>
-
-  <h3>差異込みの BEP 比較</h3>
-  <ul class="kv kv-grid">
-    <li><span>不利差異の合計</span><b>{{ unfav_total }}</b></li>
-    <li><span>調整後固定費</span><b>{{ result.adjusted_fixed_fmt }}</b></li>
-    <li><span>調整後 BEP 売上高</span><b>{{ result.adjusted_bep_sales_fmt }}</b></li>
-    <li><span>BEP シフト幅</span><b>{{ result.bep_shift_fmt }}</b></li>
-    <li><span>調整後 安全余裕額</span><b>{{ result.adjusted_margin_of_safety_fmt }}</b></li>
-  </ul>
-
-  {% if unfav_breakdown %}
-  <h4>差異内訳</h4>
+  <h2>製品ライン別</h2>
+  {% if result.lines %}
   <table class="grid">
-    <thead><tr><th>製品</th><th>期間</th><th>不利差異合計</th></tr></thead>
+    <thead>
+      <tr><th>ライン</th><th>売上</th><th>変動費</th><th>限界利益</th><th>限界利益率</th><th>個別固定費</th><th>貢献利益</th></tr>
+    </thead>
     <tbody>
-      {% for u in unfav_breakdown %}
-      <tr><td>{{ u.product.name }}</td><td>{{ u.period }}</td><td class="right">{{ u.unfav_total }}</td></tr>
+      {% for l in result.lines %}
+      <tr>
+        <td>{{ l.name }}</td>
+        <td class="right">{{ l.sales_fmt }}</td>
+        <td class="right">{{ l.variable_cost_fmt }}</td>
+        <td class="right">{{ l.cm_fmt }}</td>
+        <td class="right">{{ l.cm_ratio_fmt }}</td>
+        <td class="right">{{ l.direct_fixed_fmt }}</td>
+        <td class="right"><span class="badge sign-{{ l.segment_margin_sign }}">{{ l.segment_margin_fmt }}</span></td>
+      </tr>
       {% endfor %}
     </tbody>
   </table>
+  {% else %}
+  <p class="muted">ラインを1行以上入力してください。</p>
   {% endif %}
 </section>
 
 <section class="card">
-  <h2>BEP チャート</h2>
+  <h2>段階別損益</h2>
+  <ul class="kv kv-grid">
+    <li><span>売上高合計</span><b>{{ result.total_sales_fmt }}</b></li>
+    <li><span>変動費合計</span><b>{{ result.total_variable_cost_fmt }}</b></li>
+    <li><span>限界利益</span><b>{{ result.total_cm_fmt }}</b></li>
+    <li><span>限界利益率</span><b>{{ result.cm_ratio_fmt }}</b></li>
+    <li><span>個別固定費合計</span><b>{{ result.total_direct_fixed_fmt }}</b></li>
+    <li><span>貢献利益（製品段階）</span><b>{{ result.total_segment_margin_fmt }}</b></li>
+    <li><span>共通固定費</span><b>{{ result.common_fixed_fmt }}</b></li>
+    <li><span>営業利益</span><b><span class="badge sign-{{ result.operating_income_sign }}">{{ result.operating_income_fmt }}</span></b></li>
+  </ul>
+</section>
+
+<section class="card">
+  <h2>損益分岐点（全社blended）</h2>
+  <ul class="kv kv-grid">
+    <li><span>固定費合計（個別＋共通）</span><b>{{ result.total_fixed_fmt }}</b></li>
+    <li><span>BEP 売上高</span><b>{{ result.bep_sales_fmt }}</b></li>
+    <li><span>安全余裕額</span><b>{{ result.margin_of_safety_fmt }}</b></li>
+    <li><span>安全余裕率</span><b>{{ result.margin_of_safety_ratio_fmt }}</b></li>
+  </ul>
   <canvas id="cvpChart" height="180"></canvas>
   <script>
     window.__cvp = {
-      sales: {{ result.sales|tojson }},
-      variable_cost: {{ result.variable_cost|tojson }},
-      fixed_cost: {{ result.fixed_cost|tojson }},
-      adjusted_fixed: {{ result.adjusted_fixed|tojson }},
+      sales: {{ result.total_sales|tojson }},
+      variable_cost: {{ result.total_variable_cost|tojson }},
+      fixed_cost: {{ result.total_fixed|tojson }},
       bep_sales: {{ result.bep_sales|tojson }},
-      adjusted_bep_sales: {{ result.adjusted_bep_sales|tojson }},
       cm_ratio: {{ result.cm_ratio|tojson }}
     };
   </script>

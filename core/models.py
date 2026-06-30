@@ -99,12 +99,19 @@ class Actual:
 
 
 @dataclass
-class CVPInput:
-    sales: float
-    variable_cost: float
-    fixed_cost: float
-    include_variance_product_ids: list[str] = field(default_factory=list)
-    include_variance_period: str = ""
+class CVPLine:
+    name: str = ""
+    product_id: str = ""
+    unit_price: float = 0.0
+    quantity: float = 0.0
+    unit_variable: float = 0.0
+    direct_fixed: float = 0.0
+
+
+@dataclass
+class CVPScenario:
+    lines: list[CVPLine] = field(default_factory=list)
+    common_fixed: float = 0.0
 
 
 def dump(obj) -> dict:

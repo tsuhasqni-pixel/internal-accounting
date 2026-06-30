@@ -18,7 +18,8 @@ from core import variance as var_mod
 from core.models import (
     Actual,
     BOMItem,
-    CVPInput,
+    CVPLine,
+    CVPScenario,
     CostCard,
     LaborActual,
     LaborStd,
@@ -57,7 +58,7 @@ def filter_yen(v):
 def index():
     products = storage.load_products()
     actuals = storage.load_actuals()
-    cvp_input = storage.load_cvp()
+    scenario = storage.load_cvp()
 
     latest_variance = []
     for product in products:
@@ -72,25 +73,8 @@ def index():
         })
 
     cvp_view = None
-    if cvp_input:
-        unfav = 0.0
-        if cvp_input.include_variance_product_ids:
-            for product in products:
-                if product.id not in cvp_input.include_variance_product_ids:
-                    continue
-                target = [a for a in actuals if a.product_id == product.id]
-                if cvp_input.include_variance_period:
-                    target = [a for a in target if a.period == cvp_input.include_variance_period]
-                if not target:
-                    continue
-                latest = sorted(target, key=lambda a: a.period)[-1]
-                unfav += var_mod.unfavorable_total(var_mod.calc(product, latest))
-        result = cvp_mod.calc(
-            sales=cvp_input.sales,
-            variable_cost=cvp_input.variable_cost,
-            fixed_cost=cvp_input.fixed_cost,
-            additional_fixed=unfav,
-        )
+    if scenario and scenario.lines:
+        result = cvp_mod.calc(scenario.lines, scenario.common_fixed)
         cvp_view = rpt.cvp_to_view(result)
 
     return render_template(
@@ -268,59 +252,58 @@ def variance_view(product_id: str, period: str):
 @app.route("/cvp", methods=["GET", "POST"])
 def cvp_view():
     products = storage.load_products()
+    product_by_id = {p.id: p for p in products}
+
     if request.method == "POST":
-        cvp_input = CVPInput(
-            sales=_float(request.form, "sales"),
-            variable_cost=_float(request.form, "variable_cost"),
-            fixed_cost=_float(request.form, "fixed_cost"),
-            include_variance_product_ids=request.form.getlist("include_pid"),
-            include_variance_period=request.form.get("include_period", "").strip(),
-        )
-        storage.save_cvp(cvp_input)
+        if request.form.get("action") == "pull":
+            # Re-read current scenario, refill unit_variable from cost cards
+            scenario = storage.load_cvp() or CVPScenario(lines=[], common_fixed=0.0)
+            force = request.form.get("force") == "1"
+            for line in scenario.lines:
+                p = product_by_id.get(line.product_id)
+                if not p:
+                    continue
+                if force or not line.unit_variable:
+                    line.unit_variable = cvp_mod.pull_unit_variable_cost(p)
+            storage.save_cvp(scenario)
+            return redirect(url_for("cvp_view"))
+
+        names = request.form.getlist("line_name")
+        pids = request.form.getlist("line_pid")
+        prices = request.form.getlist("line_unit_price")
+        qtys = request.form.getlist("line_qty")
+        vcs = request.form.getlist("line_unit_variable")
+        dfs = request.form.getlist("line_direct_fixed")
+        lines: list[CVPLine] = []
+        for n, pid, p, q, v, d in zip(names, pids, prices, qtys, vcs, dfs):
+            if not (n.strip() or pid.strip()):
+                continue
+            lines.append(CVPLine(
+                name=n.strip(),
+                product_id=pid.strip(),
+                unit_price=_float({"x": p}, "x"),
+                quantity=_float({"x": q}, "x"),
+                unit_variable=_float({"x": v}, "x"),
+                direct_fixed=_float({"x": d}, "x"),
+            ))
+        scenario = CVPScenario(lines=lines, common_fixed=_float(request.form, "common_fixed"))
+        storage.save_cvp(scenario)
         return redirect(url_for("cvp_view"))
 
-    cvp_input = storage.load_cvp() or CVPInput(sales=0, variable_cost=0, fixed_cost=0)
-    actuals = storage.load_actuals()
+    scenario = storage.load_cvp() or CVPScenario(lines=[], common_fixed=0.0)
 
-    unfav_breakdown: list[dict] = []
-    unfav_total = 0.0
-    for product in products:
-        if product.id not in cvp_input.include_variance_product_ids:
-            continue
-        target = [a for a in actuals if a.product_id == product.id]
-        if cvp_input.include_variance_period:
-            target = [a for a in target if a.period == cvp_input.include_variance_period]
-        if not target:
-            continue
-        latest = sorted(target, key=lambda a: a.period)[-1]
-        report = var_mod.calc(product, latest)
-        u = var_mod.unfavorable_total(report)
-        unfav_total += u
-        unfav_breakdown.append({
-            "product": product,
-            "period": latest.period,
-            "unfav_total": rpt.signed_yen(u),
-            "unfav_value": u,
-        })
+    # Auto-suggested unit variable per product (shown next to each select for transparency)
+    suggested_unit_var = {p.id: cvp_mod.pull_unit_variable_cost(p) for p in products}
 
-    result = cvp_mod.calc(
-        sales=cvp_input.sales,
-        variable_cost=cvp_input.variable_cost,
-        fixed_cost=cvp_input.fixed_cost,
-        additional_fixed=unfav_total,
-    )
+    result = cvp_mod.calc(scenario.lines, scenario.common_fixed)
     cvp_result_view = rpt.cvp_to_view(result)
-
-    periods = sorted({a.period for a in actuals})
 
     return render_template(
         "cvp.html",
-        cvp_input=cvp_input,
+        scenario=scenario,
         result=cvp_result_view,
         products=products,
-        periods=periods,
-        unfav_breakdown=unfav_breakdown,
-        unfav_total=rpt.yen(unfav_total),
+        suggested_unit_var=suggested_unit_var,
     )
 
 

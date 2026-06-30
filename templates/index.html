@@ -62,11 +62,12 @@
   <h2>CVP サマリ</h2>
   {% if cvp_view %}
     <ul class="kv">
-      <li><span>売上高</span><b>{{ cvp_view.sales_fmt }}</b></li>
+      <li><span>売上高合計</span><b>{{ cvp_view.total_sales_fmt }}</b></li>
+      <li><span>限界利益</span><b>{{ cvp_view.total_cm_fmt }}</b></li>
       <li><span>限界利益率</span><b>{{ cvp_view.cm_ratio_fmt }}</b></li>
+      <li><span>貢献利益（合計）</span><b>{{ cvp_view.total_segment_margin_fmt }}</b></li>
+      <li><span>営業利益</span><b>{{ cvp_view.operating_income_fmt }}</b></li>
       <li><span>BEP 売上高</span><b>{{ cvp_view.bep_sales_fmt }}</b></li>
-      <li><span>差異込み BEP</span><b>{{ cvp_view.adjusted_bep_sales_fmt }}</b></li>
-      <li><span>BEP シフト</span><b>{{ cvp_view.bep_shift_fmt }}</b></li>
     </ul>
     <a class="btn ghost" href="{{ url_for('cvp_view') }}">詳細を見る</a>
   {% else %}

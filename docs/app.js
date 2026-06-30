@@ -15,11 +15,24 @@
       const raw = localStorage.getItem(LS_KEY);
       if (!raw) return defaultState();
       const s = JSON.parse(raw);
-      return { products: s.products || [], actuals: s.actuals || [], cvp: s.cvp || null };
+      return { products: s.products || [], actuals: s.actuals || [], cvp: migrateCvp(s.cvp) };
     } catch (e) {
       console.error("loadState error", e);
       return defaultState();
     }
+  }
+
+  function migrateCvp(c) {
+    if (!c) return null;
+    if (Array.isArray(c.lines)) return c;
+    // v1 → v2: single line scenario
+    if ("sales" in c || "variable_cost" in c || "fixed_cost" in c) {
+      return {
+        lines: [{ name: "（旧データ）合計", product_id: "", unit_price: Number(c.sales) || 0, quantity: 1, unit_variable: Number(c.variable_cost) || 0, direct_fixed: 0 }],
+        common_fixed: Number(c.fixed_cost) || 0,
+      };
+    }
+    return { lines: [], common_fixed: 0 };
   }
 
   function saveState() {
@@ -124,27 +137,58 @@
     return product.mode === "simple" ? calcSimple(product, actual) : calcDetailed(product, actual);
   }
 
-  function unfavorableTotal(report) {
-    if (report.mode === "simple") {
-      const hasSplit = report.lines.some((l) => l.name !== "総差異");
-      if (hasSplit) return report.lines.filter((l) => l.name !== "総差異" && l.value > 0).reduce((s, l) => s + l.value, 0);
-      return report.lines.filter((l) => l.value > 0).reduce((s, l) => s + l.value, 0);
+  // ---------- CVP calculation (line-based + stepped margin) ----------
+  function pullUnitVariableCost(product) {
+    if (!product) return 0;
+    const out = product.std_output > 0 ? product.std_output : 1;
+    if (product.mode === "simple") {
+      return ((product.cost_card && product.cost_card.simple_budget && product.cost_card.simple_budget.total) || 0) / out;
     }
-    return report.lines.filter((l) => l.value > 0).reduce((s, l) => s + l.value, 0);
+    const cc = product.cost_card || {};
+    const mats = cc.materials || [];
+    const labs = cc.labors || [];
+    const oh = cc.overhead || {};
+    const unitDM = mats.reduce((s, m) => s + (m.std_price || 0) * (m.std_qty || 0), 0) / out;
+    const unitDL = labs.reduce((s, l) => s + (l.std_rate || 0) * (l.std_hours || 0), 0) / out;
+    const totalStdHoursPerUnit = labs.reduce((s, l) => s + (l.std_hours || 0), 0) / out;
+    const unitVOH = (oh.var_rate || 0) * totalStdHoursPerUnit;
+    return unitDM + unitDL + unitVOH;
   }
 
-  // ---------- CVP calculation ----------
-  function calcCvp(sales, vc, fc, addFixed) {
-    const cm = sales - vc;
-    const cmRatio = sales ? cm / sales : 0;
-    const bep = cmRatio > 0 ? fc / cmRatio : 0;
-    const mos = sales - bep;
-    const mosRatio = sales ? mos / sales : 0;
-    const adjustedFixed = fc + addFixed;
-    const adjustedBep = cmRatio > 0 ? adjustedFixed / cmRatio : 0;
-    const shift = adjustedBep - bep;
-    const adjustedMos = sales - adjustedBep;
-    return { sales, variable_cost: vc, fixed_cost: fc, cm, cm_ratio: cmRatio, bep_sales: bep, margin_of_safety: mos, margin_of_safety_ratio: mosRatio, additional_fixed: addFixed, adjusted_fixed: adjustedFixed, adjusted_bep_sales: adjustedBep, bep_shift: shift, adjusted_margin_of_safety: adjustedMos };
+  function calcCvpScenario(lines, commonFixed) {
+    const lr = (lines || []).map((l) => {
+      const sales = (l.unit_price || 0) * (l.quantity || 0);
+      const vc = (l.unit_variable || 0) * (l.quantity || 0);
+      const cm = sales - vc;
+      return {
+        name: l.name || "(無名)", product_id: l.product_id || "",
+        unit_price: l.unit_price || 0, quantity: l.quantity || 0,
+        unit_variable: l.unit_variable || 0, direct_fixed: l.direct_fixed || 0,
+        sales, variable_cost: vc, cm,
+        cm_ratio: sales ? cm / sales : 0,
+        segment_margin: cm - (l.direct_fixed || 0),
+      };
+    });
+    const totalSales = lr.reduce((s, x) => s + x.sales, 0);
+    const totalVc = lr.reduce((s, x) => s + x.variable_cost, 0);
+    const totalCm = totalSales - totalVc;
+    const cmRatio = totalSales ? totalCm / totalSales : 0;
+    const totalDirect = lr.reduce((s, x) => s + x.direct_fixed, 0);
+    const totalSeg = totalCm - totalDirect;
+    const cFixed = commonFixed || 0;
+    const operatingIncome = totalSeg - cFixed;
+    const totalFixed = totalDirect + cFixed;
+    const bep = cmRatio > 0 ? totalFixed / cmRatio : 0;
+    const mos = totalSales - bep;
+    return {
+      lines: lr,
+      total_sales: totalSales, total_variable_cost: totalVc,
+      total_cm: totalCm, cm_ratio: cmRatio,
+      total_direct_fixed: totalDirect, total_segment_margin: totalSeg,
+      common_fixed: cFixed, operating_income: operatingIncome,
+      total_fixed: totalFixed, bep_sales: bep,
+      margin_of_safety: mos, margin_of_safety_ratio: totalSales ? mos / totalSales : 0,
+    };
   }
 
   // ---------- Generic helpers ----------
@@ -235,15 +279,15 @@
     }
 
     const dc = $("#dashCvp");
-    if (state.cvp) {
-      const unfav = computeUnfavTotalForCvp(state.cvp);
-      const r = calcCvp(state.cvp.sales, state.cvp.variable_cost, state.cvp.fixed_cost, unfav);
+    if (state.cvp && state.cvp.lines && state.cvp.lines.length) {
+      const r = calcCvpScenario(state.cvp.lines, state.cvp.common_fixed);
       dc.innerHTML = `<ul class="kv">
-        <li><span>売上高</span><b>${yen(r.sales)}</b></li>
+        <li><span>売上高合計</span><b>${yen(r.total_sales)}</b></li>
+        <li><span>限界利益</span><b>${yen(r.total_cm)}</b></li>
         <li><span>限界利益率</span><b>${pct(r.cm_ratio)}</b></li>
+        <li><span>貢献利益（合計）</span><b>${yen(r.total_segment_margin)}</b></li>
+        <li><span>営業利益</span><b><span class="badge ${signClass(r.operating_income > 0 ? -1 : r.operating_income < 0 ? 1 : 0)}">${yen(r.operating_income)}</span></b></li>
         <li><span>BEP 売上高</span><b>${yen(r.bep_sales)}</b></li>
-        <li><span>差異込み BEP</span><b>${yen(r.adjusted_bep_sales)}</b></li>
-        <li><span>BEP シフト</span><b>${signedYen(r.bep_shift)}</b></li>
       </ul>`;
     } else {
       dc.innerHTML = `<p class="muted">CVP 入力がまだありません。</p>`;
@@ -431,69 +475,109 @@
   }
 
   // ---------- CVP rendering ----------
-  function computeUnfavTotalForCvp(cvp) {
-    if (!cvp || !cvp.include_variance_product_ids) return 0;
-    let total = 0;
-    for (const pid of cvp.include_variance_product_ids) {
-      const product = state.products.find((p) => p.id === pid);
-      if (!product) continue;
-      let target = state.actuals.filter((a) => a.product_id === pid);
-      if (cvp.include_variance_period) target = target.filter((a) => a.period === cvp.include_variance_period);
-      if (!target.length) continue;
-      const latest = target.slice().sort((a, b) => a.period.localeCompare(b.period)).pop();
-      total += unfavorableTotal(calcVariance(product, latest));
-    }
-    return total;
+  function makeCvpLineRow(line, products) {
+    const tr = document.createElement("tr");
+    const optsHtml = ['<option value="">（製品紐付けなし）</option>']
+      .concat(products.map((p) => {
+        const suggested = pullUnitVariableCost(p);
+        const sel = line && line.product_id === p.id ? " selected" : "";
+        return `<option value="${p.id}" data-suggested="${suggested}"${sel}>${escapeHtml(p.name)}（標準 ${Math.round(suggested).toLocaleString()} 円/単位）</option>`;
+      })).join("");
+    const safe = line || {};
+    tr.innerHTML = `
+      <td><input name="line_name" value="${escapeHtml(safe.name || "")}" placeholder="ライン名" /></td>
+      <td><select name="line_pid" class="line-pid">${optsHtml}</select></td>
+      <td><input name="line_unit_price" type="number" step="any" value="${safe.unit_price || ""}" /></td>
+      <td><input name="line_qty" type="number" step="any" value="${safe.quantity || ""}" /></td>
+      <td><input name="line_unit_variable" type="number" step="any" value="${safe.unit_variable || ""}" /></td>
+      <td><input name="line_direct_fixed" type="number" step="any" value="${safe.direct_fixed || ""}" /></td>
+      <td><button type="button" class="btn ghost" data-remove-cvp-row>×</button></td>`;
+    return tr;
+  }
+
+  function renderCvpForm() {
+    const cvp = state.cvp || { lines: [], common_fixed: 0 };
+    const form = $("#cvpForm");
+    form.elements["common_fixed"].value = cvp.common_fixed || "";
+    const tbody = $("#cvpLineTable tbody");
+    tbody.innerHTML = "";
+    const rows = cvp.lines && cvp.lines.length ? cvp.lines : [{}];
+    for (const l of rows) tbody.appendChild(makeCvpLineRow(l, state.products));
+  }
+
+  function readCvpForm() {
+    const form = $("#cvpForm");
+    const lines = [];
+    $$("#cvpLineTable tbody tr").forEach((tr) => {
+      const name = $("input[name=line_name]", tr).value.trim();
+      const pid = $("select[name=line_pid]", tr).value;
+      const unit_price = num($("input[name=line_unit_price]", tr).value);
+      const quantity = num($("input[name=line_qty]", tr).value);
+      const unit_variable = num($("input[name=line_unit_variable]", tr).value);
+      const direct_fixed = num($("input[name=line_direct_fixed]", tr).value);
+      if (!name && !pid && !unit_price && !quantity && !unit_variable && !direct_fixed) return;
+      lines.push({ name: name || (state.products.find((p) => p.id === pid) || {}).name || "", product_id: pid, unit_price, quantity, unit_variable, direct_fixed });
+    });
+    return { lines, common_fixed: num(form.elements["common_fixed"].value) };
+  }
+
+  function applyPullFromCostCards(force) {
+    const draft = readCvpForm();
+    const updated = draft.lines.map((l) => {
+      if (!l.product_id) return l;
+      const product = state.products.find((p) => p.id === l.product_id);
+      if (!product) return l;
+      if (force || !l.unit_variable) {
+        return { ...l, unit_variable: pullUnitVariableCost(product) };
+      }
+      return l;
+    });
+    state.cvp = { lines: updated, common_fixed: draft.common_fixed };
+    saveState();
+    renderCvpForm();
+    renderCvpResult();
+    renderDashboard();
   }
 
   let cvpChartInstance = null;
-  function renderCvp() {
-    const form = $("#cvpForm");
-    const cvp = state.cvp || { sales: 0, variable_cost: 0, fixed_cost: 0, include_variance_product_ids: [], include_variance_period: "" };
-    form.elements["sales"].value = cvp.sales || "";
-    form.elements["variable_cost"].value = cvp.variable_cost || "";
-    form.elements["fixed_cost"].value = cvp.fixed_cost || "";
-    const periods = Array.from(new Set(state.actuals.map((a) => a.period))).sort();
-    $("#cvpPeriodSelect").innerHTML = `<option value="">直近の期間</option>` + periods.map((p) => `<option value="${escapeHtml(p)}" ${cvp.include_variance_period === p ? "selected" : ""}>${escapeHtml(p)}</option>`).join("");
-    $("#cvpProductCheckboxes").innerHTML = state.products.map((p) => `
-      <label class="checkbox"><input type="checkbox" name="include_pid" value="${p.id}" ${(cvp.include_variance_product_ids || []).includes(p.id) ? "checked" : ""} /> ${escapeHtml(p.name)} <span class="muted small">(${p.mode === "detailed" ? "詳細" : "簡易"})</span></label>`).join("");
+  function renderCvpResult() {
+    const cvp = state.cvp || { lines: [], common_fixed: 0 };
+    const r = calcCvpScenario(cvp.lines, cvp.common_fixed);
 
-    const unfavTotal = computeUnfavTotalForCvp(cvp);
-    const r = calcCvp(num(cvp.sales), num(cvp.variable_cost), num(cvp.fixed_cost), unfavTotal);
-    const breakdown = [];
-    for (const pid of cvp.include_variance_product_ids || []) {
-      const product = state.products.find((p) => p.id === pid);
-      if (!product) continue;
-      let target = state.actuals.filter((a) => a.product_id === pid);
-      if (cvp.include_variance_period) target = target.filter((a) => a.period === cvp.include_variance_period);
-      if (!target.length) continue;
-      const latest = target.slice().sort((a, b) => a.period.localeCompare(b.period)).pop();
-      breakdown.push({ product, period: latest.period, value: unfavorableTotal(calcVariance(product, latest)) });
+    const linesEl = $("#cvpLinesResult");
+    if (!r.lines.length) {
+      linesEl.innerHTML = `<p class="muted">ラインを1行以上入力してください。</p>`;
+    } else {
+      linesEl.innerHTML = `<table class="grid"><thead><tr><th>ライン</th><th>売上</th><th>変動費</th><th>限界利益</th><th>限界利益率</th><th>個別固定費</th><th>貢献利益</th></tr></thead><tbody>${r.lines.map((l) => `
+        <tr>
+          <td>${escapeHtml(l.name)}</td>
+          <td class="right">${yen(l.sales)}</td>
+          <td class="right">${yen(l.variable_cost)}</td>
+          <td class="right">${yen(l.cm)}</td>
+          <td class="right">${pct(l.cm_ratio)}</td>
+          <td class="right">${yen(l.direct_fixed)}</td>
+          <td class="right"><span class="badge ${signClass(l.segment_margin > 0 ? -1 : l.segment_margin < 0 ? 1 : 0)}">${yen(l.segment_margin)}</span></td>
+        </tr>`).join("")}</tbody></table>`;
     }
 
     $("#cvpResult").innerHTML = `
       <ul class="kv kv-grid">
-        <li><span>売上高</span><b>${yen(r.sales)}</b></li>
-        <li><span>変動費</span><b>${yen(r.variable_cost)}</b></li>
-        <li><span>固定費</span><b>${yen(r.fixed_cost)}</b></li>
-        <li><span>限界利益</span><b>${yen(r.cm)}</b></li>
+        <li><span>売上高合計</span><b>${yen(r.total_sales)}</b></li>
+        <li><span>変動費合計</span><b>${yen(r.total_variable_cost)}</b></li>
+        <li><span>限界利益</span><b>${yen(r.total_cm)}</b></li>
         <li><span>限界利益率</span><b>${pct(r.cm_ratio)}</b></li>
+        <li><span>個別固定費合計</span><b>${yen(r.total_direct_fixed)}</b></li>
+        <li><span>貢献利益（製品段階）</span><b>${yen(r.total_segment_margin)}</b></li>
+        <li><span>共通固定費</span><b>${yen(r.common_fixed)}</b></li>
+        <li><span>営業利益</span><b><span class="badge ${signClass(r.operating_income > 0 ? -1 : r.operating_income < 0 ? 1 : 0)}">${yen(r.operating_income)}</span></b></li>
+        <li><span>固定費合計</span><b>${yen(r.total_fixed)}</b></li>
         <li><span>BEP 売上高</span><b>${yen(r.bep_sales)}</b></li>
         <li><span>安全余裕額</span><b>${yen(r.margin_of_safety)}</b></li>
         <li><span>安全余裕率</span><b>${pct(r.margin_of_safety_ratio)}</b></li>
-      </ul>
-      <h3>差異込みの BEP 比較</h3>
-      <ul class="kv kv-grid">
-        <li><span>不利差異の合計</span><b>${yen(unfavTotal)}</b></li>
-        <li><span>調整後固定費</span><b>${yen(r.adjusted_fixed)}</b></li>
-        <li><span>調整後 BEP 売上高</span><b>${yen(r.adjusted_bep_sales)}</b></li>
-        <li><span>BEP シフト幅</span><b>${signedYen(r.bep_shift)}</b></li>
-        <li><span>調整後 安全余裕額</span><b>${yen(r.adjusted_margin_of_safety)}</b></li>
-      </ul>
-      ${breakdown.length ? `<h4>差異内訳</h4><table class="grid"><thead><tr><th>製品</th><th>期間</th><th>不利差異合計</th></tr></thead><tbody>${breakdown.map((b) => `<tr><td>${escapeHtml(b.product.name)}</td><td>${escapeHtml(b.period)}</td><td class="right">${yen(b.value)}</td></tr>`).join("")}</tbody></table>` : ""}
-    `;
+      </ul>`;
+
     if (cvpChartInstance) cvpChartInstance.destroy();
-    const maxSales = Math.max(r.sales, r.bep_sales, r.adjusted_bep_sales) * 1.25 || 100;
+    const maxSales = Math.max(r.total_sales, r.bep_sales) * 1.25 || 100;
     const points = 12;
     const xs = Array.from({ length: points + 1 }, (_, i) => (maxSales * i) / points);
     cvpChartInstance = new Chart($("#cvpChart"), {
@@ -503,13 +587,14 @@
         datasets: [
           { label: "売上線", data: xs, borderColor: "#2563eb", backgroundColor: "transparent", pointRadius: 0 },
           { label: "変動費線", data: xs.map((x) => x * (1 - r.cm_ratio)), borderColor: "#9ca3af", borderDash: [4, 4], backgroundColor: "transparent", pointRadius: 0 },
-          { label: "総費用（元）", data: xs.map((x) => x * (1 - r.cm_ratio) + r.fixed_cost), borderColor: "#dc2626", backgroundColor: "transparent", pointRadius: 0 },
-          { label: "総費用（差異込み）", data: xs.map((x) => x * (1 - r.cm_ratio) + r.adjusted_fixed), borderColor: "#b45309", borderDash: [6, 4], backgroundColor: "transparent", pointRadius: 0 },
+          { label: "総費用線", data: xs.map((x) => x * (1 - r.cm_ratio) + r.total_fixed), borderColor: "#dc2626", backgroundColor: "transparent", pointRadius: 0 },
         ],
       },
       options: { responsive: true, plugins: { tooltip: { callbacks: { label: (ctx) => ctx.dataset.label + ": ¥" + Math.round(ctx.raw).toLocaleString() } } }, scales: { x: { title: { display: true, text: "売上高（¥）" } }, y: { title: { display: true, text: "金額（¥）" }, ticks: { callback: (v) => "¥" + Number(v).toLocaleString() } } } },
     });
   }
+
+  function renderCvp() { renderCvpForm(); renderCvpResult(); }
 
   // ---------- Event wiring ----------
   $("#productForm").addEventListener("submit", (e) => {
@@ -562,15 +647,40 @@
 
   $("#cvpForm").addEventListener("submit", (e) => {
     e.preventDefault();
-    const form = $("#cvpForm");
-    state.cvp = {
-      sales: num(form.elements["sales"].value),
-      variable_cost: num(form.elements["variable_cost"].value),
-      fixed_cost: num(form.elements["fixed_cost"].value),
-      include_variance_product_ids: $$("input[name=include_pid]:checked", form).map((i) => i.value),
-      include_variance_period: form.elements["include_period"].value,
-    };
-    saveState(); renderCvp(); renderDashboard();
+    state.cvp = readCvpForm();
+    saveState(); renderCvpResult(); renderDashboard();
+  });
+
+  $("#btnAddCvpLine").addEventListener("click", () => {
+    $("#cvpLineTable tbody").appendChild(makeCvpLineRow(null, state.products));
+  });
+  $("#btnPullCostCards").addEventListener("click", () => applyPullFromCostCards(false));
+  $("#btnPullCostCardsForce").addEventListener("click", () => {
+    if (!confirm("既存の単位変動費を上書きします。よろしいですか?")) return;
+    applyPullFromCostCards(true);
+  });
+
+  // Auto-fill unit_variable when a product is freshly selected and unit_variable is empty
+  $("#cvpLineTable").addEventListener("change", (e) => {
+    const sel = e.target.closest("select[name=line_pid]");
+    if (!sel) return;
+    const tr = sel.closest("tr");
+    const vcInput = $("input[name=line_unit_variable]", tr);
+    const nameInput = $("input[name=line_name]", tr);
+    const product = state.products.find((p) => p.id === sel.value);
+    if (product) {
+      if (!nameInput.value.trim()) nameInput.value = product.name;
+      if (!vcInput.value) vcInput.value = Math.round(pullUnitVariableCost(product));
+    }
+  });
+
+  document.addEventListener("click", (e) => {
+    const rm = e.target.closest("[data-remove-cvp-row]");
+    if (!rm) return;
+    const tr = rm.closest("tr");
+    const tbody = tr && tr.parentElement;
+    if (tbody && tbody.children.length > 1) tr.remove();
+    else if (tr) tr.querySelectorAll("input").forEach((i) => (i.value = ""));
   });
 
   // Export / import / reset
@@ -587,7 +697,7 @@
     reader.onload = () => {
       try {
         const s = JSON.parse(reader.result);
-        state = { products: s.products || [], actuals: s.actuals || [], cvp: s.cvp || null };
+        state = { products: s.products || [], actuals: s.actuals || [], cvp: migrateCvp(s.cvp) };
         saveState(); refresh();
         alert("インポート完了");
       } catch (err) { alert("JSON 読み込みエラー: " + err); }

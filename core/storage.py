@@ -10,7 +10,7 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
-from .models import Actual, CVPInput, Product, CostCard, BOMItem, LaborStd, OHStd, \
+from .models import Actual, CVPLine, CVPScenario, Product, CostCard, BOMItem, LaborStd, OHStd, \
     SimpleBudget, MaterialActual, LaborActual, OHActual, SimpleActual
 
 
@@ -90,14 +90,34 @@ def save_actuals(actuals: list[Actual]) -> None:
     _atomic_write(ACTUALS_FILE, [asdict(a) for a in actuals])
 
 
-def load_cvp() -> CVPInput | None:
+def _cvp_from_dict(d: dict) -> CVPScenario:
+    # Migrate v1 shape {sales, variable_cost, fixed_cost, ...} → one-line scenario.
+    if "lines" not in d and ("sales" in d or "variable_cost" in d or "fixed_cost" in d):
+        return CVPScenario(
+            lines=[CVPLine(
+                name="（旧データ）合計",
+                product_id="",
+                unit_price=float(d.get("sales", 0)),
+                quantity=1.0,
+                unit_variable=float(d.get("variable_cost", 0)),
+                direct_fixed=0.0,
+            )],
+            common_fixed=float(d.get("fixed_cost", 0)),
+        )
+    return CVPScenario(
+        lines=[CVPLine(**l) for l in d.get("lines", [])],
+        common_fixed=float(d.get("common_fixed", 0)),
+    )
+
+
+def load_cvp() -> CVPScenario | None:
     raw = _read_json(CVP_FILE, None)
     if raw is None:
         return None
-    return CVPInput(**raw)
+    return _cvp_from_dict(raw)
 
 
-def save_cvp(cvp: CVPInput) -> None:
+def save_cvp(cvp: CVPScenario) -> None:
     from dataclasses import asdict
     _atomic_write(CVP_FILE, asdict(cvp))
 

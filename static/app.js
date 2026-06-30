@@ -6,6 +6,7 @@
     if (!rows.length) return;
     const clone = rows[rows.length - 1].cloneNode(true);
     clone.querySelectorAll('input').forEach((inp) => (inp.value = ''));
+    clone.querySelectorAll('select').forEach((s) => (s.selectedIndex = 0));
     tbody.appendChild(clone);
   }
 
@@ -75,12 +76,11 @@
 
   if (window.__cvp && document.getElementById('cvpChart')) {
     const c = window.__cvp;
-    const maxSales = Math.max(c.sales, c.bep_sales, c.adjusted_bep_sales) * 1.25 || 100;
+    const maxSales = Math.max(c.sales || 0, c.bep_sales || 0) * 1.25 || 100;
     const points = 12;
     const xs = Array.from({ length: points + 1 }, (_, i) => (maxSales * i) / points);
     const vcLine = xs.map((x) => x * (1 - c.cm_ratio));
-    const totalCostOrig = xs.map((x) => x * (1 - c.cm_ratio) + c.fixed_cost);
-    const totalCostAdj = xs.map((x) => x * (1 - c.cm_ratio) + c.adjusted_fixed);
+    const totalCost = xs.map((x) => x * (1 - c.cm_ratio) + c.fixed_cost);
     const salesLine = xs.map((x) => x);
 
     new Chart(document.getElementById('cvpChart'), {
@@ -90,8 +90,7 @@
         datasets: [
           { label: '売上線', data: salesLine, borderColor: '#2563eb', backgroundColor: 'transparent', tension: 0, pointRadius: 0 },
           { label: '変動費線', data: vcLine, borderColor: '#9ca3af', borderDash: [4, 4], backgroundColor: 'transparent', pointRadius: 0 },
-          { label: '総費用（元）', data: totalCostOrig, borderColor: '#dc2626', backgroundColor: 'transparent', pointRadius: 0 },
-          { label: '総費用（差異込み）', data: totalCostAdj, borderColor: '#b45309', borderDash: [6, 4], backgroundColor: 'transparent', pointRadius: 0 },
+          { label: '総費用線', data: totalCost, borderColor: '#dc2626', backgroundColor: 'transparent', pointRadius: 0 },
         ],
       },
       options: {

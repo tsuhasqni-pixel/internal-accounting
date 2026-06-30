@@ -57,18 +57,48 @@ def variance_to_view(report: VarianceReport) -> dict:
 
 
 def cvp_to_view(result: CVPResult) -> dict:
-    d = asdict(result)
-    d["sales_fmt"] = yen(result.sales)
-    d["variable_cost_fmt"] = yen(result.variable_cost)
-    d["fixed_cost_fmt"] = yen(result.fixed_cost)
-    d["cm_fmt"] = yen(result.cm)
-    d["cm_ratio_fmt"] = pct(result.cm_ratio)
-    d["bep_sales_fmt"] = yen(result.bep_sales)
-    d["margin_of_safety_fmt"] = yen(result.margin_of_safety)
-    d["margin_of_safety_ratio_fmt"] = pct(result.margin_of_safety_ratio)
-    d["additional_fixed_fmt"] = yen(result.additional_fixed)
-    d["adjusted_fixed_fmt"] = yen(result.adjusted_fixed)
-    d["adjusted_bep_sales_fmt"] = yen(result.adjusted_bep_sales)
-    d["bep_shift_fmt"] = signed_yen(result.bep_shift)
-    d["adjusted_margin_of_safety_fmt"] = yen(result.adjusted_margin_of_safety)
-    return d
+    lines = []
+    for l in result.lines:
+        lines.append({
+            "name": l.name,
+            "product_id": l.product_id,
+            "unit_price_fmt": yen(l.unit_price),
+            "quantity": l.quantity,
+            "unit_variable_fmt": yen(l.unit_variable),
+            "direct_fixed_fmt": yen(l.direct_fixed),
+            "sales_fmt": yen(l.sales),
+            "variable_cost_fmt": yen(l.variable_cost),
+            "cm_fmt": yen(l.cm),
+            "cm_ratio_fmt": pct(l.cm_ratio),
+            "segment_margin_fmt": yen(l.segment_margin),
+            "segment_margin_sign": (
+                "fav" if l.segment_margin > 0
+                else "unfav" if l.segment_margin < 0
+                else "zero"
+            ),
+        })
+    return {
+        "lines": lines,
+        "total_sales_fmt": yen(result.total_sales),
+        "total_variable_cost_fmt": yen(result.total_variable_cost),
+        "total_cm_fmt": yen(result.total_cm),
+        "cm_ratio_fmt": pct(result.cm_ratio),
+        "total_direct_fixed_fmt": yen(result.total_direct_fixed),
+        "total_segment_margin_fmt": yen(result.total_segment_margin),
+        "common_fixed_fmt": yen(result.common_fixed),
+        "operating_income_fmt": yen(result.operating_income),
+        "operating_income_sign": (
+            "fav" if result.operating_income > 0
+            else "unfav" if result.operating_income < 0
+            else "zero"
+        ),
+        "total_fixed_fmt": yen(result.total_fixed),
+        "bep_sales_fmt": yen(result.bep_sales),
+        "margin_of_safety_fmt": yen(result.margin_of_safety),
+        "margin_of_safety_ratio_fmt": pct(result.margin_of_safety_ratio),
+        "total_sales": result.total_sales,
+        "total_variable_cost": result.total_variable_cost,
+        "total_fixed": result.total_fixed,
+        "bep_sales": result.bep_sales,
+        "cm_ratio": result.cm_ratio,
+    }
