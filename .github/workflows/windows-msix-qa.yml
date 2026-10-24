@@ -1,0 +1,84 @@
+name: Windows MSIX QA (unsigned)
+on:
+  workflow_dispatch:
+  push:
+    branches: [codex/msix-qa-20261024]
+    paths:
+      - 'docs/**'
+      - 'windows/**'
+      - '.github/workflows/windows-msix-qa.yml'
+  pull_request:
+    paths:
+      - 'docs/**'
+      - 'windows/**'
+      - '.github/workflows/windows-msix-qa.yml'
+permissions:
+  contents: read
+jobs:
+  windows-msix:
+    runs-on: windows-2022
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Verify source and package metadata
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          foreach ($file in @('docs/index.html','docs/app.js','docs/style.css','windows/msix/AppxManifest.xml','windows/Program.cs')) {
+            if (!(Test-Path $file)) { throw "Missing $file" }
+          }
+          [xml]$manifest = Get-Content windows/msix/AppxManifest.xml -Raw
+          if ($manifest.Package.Identity.Name -ne 'TsuhaTools.InternalAccounting.QA') { throw 'QA identity mismatch' }
+          if ($manifest.Package.Identity.Publisher -ne 'CN=UnsignedQA') { throw 'QA publisher mismatch' }
+      - name: Publish Windows standalone application
+        shell: pwsh
+        run: |
+          dotnet publish windows/InternalAccounting.csproj --configuration Release --runtime win-x64 --self-contained true /p:PublishSingleFile=false --output "$env:RUNNER_TEMP/msixroot/App"
+          if ($LASTEXITCODE -ne 0) { throw 'dotnet publish failed' }
+          Copy-Item docs "$env:RUNNER_TEMP/msixroot/App/docs" -Recurse
+          if (!(Test-Path "$env:RUNNER_TEMP/msixroot/App/InternalAccounting.exe")) { throw 'Missing entry point' }
+      - name: Create required package artwork and manifest
+        shell: pwsh
+        run: |
+          Add-Type -AssemblyName System.Drawing
+          $assets = Join-Path $env:RUNNER_TEMP 'msixroot/Assets'
+          New-Item -ItemType Directory -Path $assets -Force | Out-Null
+          foreach ($item in @(@('StoreLogo.png',50),@('Square44x44Logo.png',44),@('Square150x150Logo.png',150))) {
+            $name = $item[0]; $side = [int]$item[1]
+            $bmp = [Drawing.Bitmap]::new($side, $side)
+            $graphics = [Drawing.Graphics]::FromImage($bmp)
+            try {
+              $graphics.Clear([Drawing.Color]::FromArgb(26,41,62))
+              $brush = [Drawing.SolidBrush]::new([Drawing.Color]::FromArgb(255,197,74))
+              try { $graphics.FillRectangle($brush,[int]($side*0.22),[int]($side*0.2),[int]($side*0.56),[int]($side*0.6)) } finally { $brush.Dispose() }
+              $bmp.Save((Join-Path $assets $name), [Drawing.Imaging.ImageFormat]::Png)
+            } finally { $graphics.Dispose(); $bmp.Dispose() }
+          }
+          Copy-Item windows/msix/AppxManifest.xml "$env:RUNNER_TEMP/msixroot/AppxManifest.xml"
+      - name: Build and verify unsigned MSIX
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $makeappx = Get-ChildItem 'C:\Program Files (x86)\Windows Kits\10\bin' -Filter makeappx.exe -Recurse |
+            Where-Object { $_.FullName -match '\\x64\\makeappx.exe$' } |
+            Sort-Object FullName -Descending | Select-Object -First 1
+          if (!$makeappx) { throw 'Windows SDK MakeAppx.exe not found' }
+          $out = Join-Path $PWD 'InternalAccounting_0.1.0.0_x64_QA_UNSIGNED.msix'
+          & $makeappx.FullName pack /d "$env:RUNNER_TEMP/msixroot" /p $out /o
+          if ($LASTEXITCODE -ne 0) { throw 'MakeAppx pack failed' }
+          & $makeappx.FullName unpack /p $out /d "$env:RUNNER_TEMP/verify" /o
+          if ($LASTEXITCODE -ne 0) { throw 'MakeAppx unpack failed' }
+          if (!(Test-Path "$env:RUNNER_TEMP/verify/App/InternalAccounting.exe")) { throw 'Packaged executable missing' }
+          if (!(Test-Path "$env:RUNNER_TEMP/verify/App/docs/index.html")) { throw 'Packaged UI missing' }
+          Get-FileHash $out -Algorithm SHA256 | Format-List | Out-File MSIX_SHA256.txt
+          "Source SHA: $env:GITHUB_SHA" | Add-Content MSIX_SHA256.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: InternalAccounting-QA-UNSIGNED-MSIX
+          path: |
+            InternalAccounting_0.1.0.0_x64_QA_UNSIGNED.msix
+            MSIX_SHA256.txt
+          if-no-files-found: error

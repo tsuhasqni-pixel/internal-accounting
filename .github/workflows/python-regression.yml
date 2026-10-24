@@ -1,0 +1,33 @@
+name: Python regression tests
+on:
+  workflow_dispatch:
+  push:
+    branches: [codex/msix-qa-20261024]
+    paths:
+      - 'core/**'
+      - 'tests/**'
+      - 'requirements.txt'
+      - '.github/workflows/python-regression.yml'
+  pull_request:
+    paths:
+      - 'core/**'
+      - 'tests/**'
+      - 'requirements.txt'
+      - '.github/workflows/python-regression.yml'
+permissions:
+  contents: read
+jobs:
+  regression:
+    runs-on: windows-2022
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt pytest
+      - name: Run regression suite
+        run: python -m pytest tests/ -q
